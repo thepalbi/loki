@@ -1,5 +1,6 @@
 ## Main
 
+* [6361](https://github.com/grafana/loki/pull/6361) **chaudum**: Add new unwrapped range aggregation `rate_counter()` to LogQL
 * [6361](https://github.com/grafana/loki/pull/6361) **chaudum**: Sum values in unwrapped rate aggregation instead of treating them as counter
 * [6099](https://github.com/grafana/loki/pull/6099) **cstyan**: Drop lines with malformed JSON in Promtail JSON pipeline stage
 * [6136](https://github.com/grafana/loki/pull/6136) **periklis**: Add support for alertmanager header authorization
