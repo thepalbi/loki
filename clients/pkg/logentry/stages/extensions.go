@@ -5,7 +5,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const RFC3339Nano = "RFC3339Nano"
+const (
+	RFC3339Nano = "RFC3339Nano"
+	RFC3339     = "RFC3339"
+)
 
 // NewDocker creates a Docker json log format specific pipeline stage.
 func NewDocker(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
@@ -57,6 +60,35 @@ func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) 
 		PipelineStage{
 			StageTypeOutput: OutputConfig{
 				"content",
+			},
+		},
+	}
+	return NewPipeline(logger, stages, nil, registerer)
+}
+
+// NewHerokuDrain creates a new Heroku LogPlex drain pipeline stage
+func NewHerokuDrain(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
+	stages := PipelineStages{
+		PipelineStage{
+			StageTypeLogplex: nil,
+		},
+		PipelineStage{
+			StageTypeLabel: LabelsConfig{
+				"host":   &LogplexHostnameField,
+				"app":    &LogplexApplicationField,
+				"proc":   &LogplexProcessIDField,
+				"log_id": &LogplexLogIDField,
+			},
+		},
+		PipelineStage{
+			StageTypeTimestamp: TimestampConfig{
+				Source: LogplexTimestampField,
+				Format: RFC3339,
+			},
+		},
+		PipelineStage{
+			StageTypeOutput: OutputConfig{
+				LogplexMessageField,
 			},
 		},
 	}
