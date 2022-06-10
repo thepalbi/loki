@@ -6,6 +6,7 @@ import (
 	"github.com/heroku/x/logplex/encoding"
 	"github.com/pkg/errors"
 	"strings"
+	"time"
 )
 
 // These var names are exposed a vars to be reused in label stages, which require a pointer type.
@@ -56,7 +57,8 @@ func (l *logplexStage) processEntry(extracted map[string]interface{}, line strin
 	scanner := encoding.NewDrainScanner(strings.NewReader(line))
 	for scanner.Scan() {
 		message := scanner.Message()
-		extracted[LogplexTimestampField] = message.Timestamp
+		serializedTimestamp := message.Timestamp.Format(time.RFC3339)
+		extracted[LogplexTimestampField] = serializedTimestamp
 		extracted[LogplexHostnameField] = message.Hostname
 		extracted[LogplexApplicationField] = message.Application
 		extracted[LogplexProcessIDField] = message.Process
