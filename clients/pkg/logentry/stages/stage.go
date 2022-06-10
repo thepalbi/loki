@@ -37,6 +37,7 @@ const (
 	StageTypeLabelAllow   = "labelallow"
 	StageTypeStaticLabels = "static_labels"
 	StageTypeLogplex      = "logplex"
+	StageTypeHeroku       = "heroku"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -211,7 +212,12 @@ func New(logger log.Logger, jobName *string, stageType string,
 			return nil, err
 		}
 	case StageTypeLogplex:
-		s, err = newLogplexStage()
+		s, err = newLogplexStage(logger)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeHeroku:
+		s, err = NewHerokuDrain(logger, registerer)
 		if err != nil {
 			return nil, err
 		}
