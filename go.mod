@@ -201,6 +201,7 @@ require (
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/hashicorp/memberlist v0.3.1 // indirect
 	github.com/hashicorp/serf v0.9.6 // indirect
+	github.com/heroku/x v0.0.50 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
