@@ -2,9 +2,9 @@ package targets
 
 import (
 	"fmt"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -37,6 +37,7 @@ const (
 	CloudflareConfigs    = "cloudflareConfigs"
 	DockerConfigs        = "dockerConfigs"
 	DockerSDConfigs      = "dockerSDConfigs"
+	HerokuDrainConfigs   = "herokuDrainConfigs"
 )
 
 type targetManager interface {
@@ -96,6 +97,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
+		case cfg.HerokuDrainConfig != nil:
+			targetScrapeConfigs[HerokuDrainConfigs] = append(targetScrapeConfigs[HerokuDrainConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -214,6 +217,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
+		case HerokuDrainConfigs:
+			herokuDrainTargetManager, err := heroku.NewHerokuDrainTargetManager(reg, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make Heroku Drain target manager")
+			}
+			targetManagers = append(targetManagers, herokuDrainTargetManager)
 		case WindowsEventsConfigs:
 			windowsTargetManager, err := windows.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {

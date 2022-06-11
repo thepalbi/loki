@@ -183,6 +183,24 @@ func (t *PushTarget) handlePlaintext(w http.ResponseWriter, r *http.Request) {
 	entries := t.handler.Chan()
 	defer r.Body.Close()
 	body := bufio.NewReader(r.Body)
+	if t.config.OmitNewLineSplitting {
+		bs, err := io.ReadAll(body)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to read all raw bytes", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		entries <- api.Entry{
+			Labels: t.Labels().Clone(),
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      string(bs),
+			},
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	for {
 		line, err := body.ReadString('\n')
 		if err != nil && err != io.EOF {

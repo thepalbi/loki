@@ -33,17 +33,18 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName          string                     `yaml:"job_name,omitempty"`
-	PipelineStages   stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
-	JournalConfig    *JournalTargetConfig       `yaml:"journal,omitempty"`
-	SyslogConfig     *SyslogTargetConfig        `yaml:"syslog,omitempty"`
-	GcplogConfig     *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
-	PushConfig       *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
-	WindowsConfig    *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
-	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
-	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
-	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
-	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	JobName           string                     `yaml:"job_name,omitempty"`
+	PipelineStages    stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
+	JournalConfig     *JournalTargetConfig       `yaml:"journal,omitempty"`
+	SyslogConfig      *SyslogTargetConfig        `yaml:"syslog,omitempty"`
+	GcplogConfig      *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
+	PushConfig        *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
+	WindowsConfig     *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	KafkaConfig       *KafkaTargetConfig         `yaml:"kafka,omitempty"`
+	GelfConfig        *GelfTargetConfig          `yaml:"gelf,omitempty"`
+	CloudflareConfig  *CloudflareConfig          `yaml:"cloudflare,omitempty"`
+	HerokuDrainConfig *HerokuDrainTargetConfig   `yaml:"heroku_drain,omitempty"`
+	RelabelConfigs    []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
@@ -358,6 +359,15 @@ type GcplogTargetConfig struct {
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
+// HerokuDrainTargetConfig describes a scrape config to listen and consume logs from heroku.
+type HerokuDrainTargetConfig struct {
+	// Server is the weaveworks server config for listening connections
+	Server server.Config `yaml:"server"`
+
+	// Labels optionally holds labels to associate with each record received on the push api.
+	Labels model.LabelSet `yaml:"labels"`
+}
+
 // PushTargetConfig describes a scrape config that listens for Loki push messages.
 type PushTargetConfig struct {
 	// Server is the weaveworks server config for listening connections
@@ -368,6 +378,9 @@ type PushTargetConfig struct {
 
 	// If promtail should maintain the incoming log timestamp or replace it with the current time.
 	KeepTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// If the payload should not be splitted by the new line character into multiple entries.
+	OmitNewLineSplitting bool `yaml:"omit_new_line_splitting"`
 }
 
 // DefaultScrapeConfig is the default Config.

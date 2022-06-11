@@ -28,8 +28,14 @@ func TestPipeline_Logplex(t *testing.T) {
 			entry:           "",
 			expectedExtract: map[string]interface{}{},
 		},
+		"some test": {
+			entry: `83 <40>1 2012-11-30T06:45:29+00:00 host app web.3 - State changed from starting to up
+119 <40>1 2012-11-30T06:45:26+00:00 host app web.3 - Starting process with command "bundle exec rackup config.ru -p 24405"
+`,
+			expectedExtract: map[string]interface{}{},
+		},
 		"heroku example is parsed correctly": {
-			entry: "83 <40>1 2012-11-30T06:45:29+00:00 host app web.3 - State changed from starting to up ",
+			entry: "83 <40>1 2012-11-30T06:45:29+00:00 host app web.3 - State changed from starting to up",
 			expectedExtract: map[string]interface{}{
 				LogplexMessageField:     "State changed from starting to up ",
 				LogplexProcessIDField:   "web.3",
@@ -38,6 +44,10 @@ func TestPipeline_Logplex(t *testing.T) {
 				LogplexHostnameField:    "host",
 				LogplexTimestampField:   parsedDate,
 			},
+		},
+		"test app example is parsed correctly": {
+			entry:           "69 <134>1 2022-06-10T20:50:53.690097+00:00 host heroku web.1 - Unidling",
+			expectedExtract: map[string]interface{}{},
 		},
 	}
 

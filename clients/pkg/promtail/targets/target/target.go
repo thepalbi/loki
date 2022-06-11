@@ -41,6 +41,8 @@ const (
 
 	// DockerTargetType is a Docker target
 	DockerTargetType = TargetType("Docker")
+
+	HerokuDrainTargetType = TargetType("HerokuDrain")
 )
 
 // Target is a promtail scrape target

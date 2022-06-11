@@ -68,7 +68,7 @@ func (l *logplexStage) processEntry(extracted map[string]interface{}, line strin
 	err := scanner.Err()
 	if err != nil {
 		if Debug {
-			level.Debug(l.logger).Log("msg", "failed to unmarshal log line", "err", err)
+			level.Debug(l.logger).Log("msg", "failed to unmarshal log line", "err", err, "raw", line)
 		}
 		return errors.New(ErrMalformedLogplex)
 	}
