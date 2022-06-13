@@ -112,7 +112,7 @@ func (h *HerokuDrainTarget) drain(w http.ResponseWriter, r *http.Request) {
 	for herokuScanner.Scan() {
 		message := herokuScanner.Message()
 		ls := model.LabelSet{}
-		ls[model.LabelName(LogplexTimestampField)] = model.LabelValue(message.Timestamp.Format(time.RFC3339))
+		ls[model.LabelName(LogplexTimestampField)] = model.LabelValue(message.Timestamp.Format(time.RFC3339Nano))
 		ls[model.LabelName(LogplexHostnameField)] = model.LabelValue(message.Hostname)
 		ls[model.LabelName(LogplexApplicationField)] = model.LabelValue(message.Application)
 		ls[model.LabelName(LogplexProcessIDField)] = model.LabelValue(message.Process)
