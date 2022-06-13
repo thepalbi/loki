@@ -11,7 +11,6 @@ import (
 const (
 	RFC3339Nano         = "RFC3339Nano"
 	MaxPartialLinesSize = 100 // Max buffer size to hold partial lines.
-	RFC3339             = "RFC3339"
 )
 
 // NewDocker creates a Docker json log format specific pipeline stage.
@@ -125,33 +124,4 @@ func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) 
 	}
 	c.partialLines = make([]string, 0, c.maxPartialLines)
 	return &c, nil
-}
-
-// NewHerokuDrain creates a new Heroku LogPlex drain pipeline stage
-func NewHerokuDrain(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
-	stages := PipelineStages{
-		PipelineStage{
-			StageTypeLogplex: nil,
-		},
-		PipelineStage{
-			StageTypeLabel: LabelsConfig{
-				"host":   &LogplexHostnameField,
-				"app":    &LogplexApplicationField,
-				"proc":   &LogplexProcessIDField,
-				"log_id": &LogplexLogIDField,
-			},
-		},
-		PipelineStage{
-			StageTypeTimestamp: TimestampConfig{
-				Source: LogplexTimestampField,
-				Format: RFC3339,
-			},
-		},
-		PipelineStage{
-			StageTypeOutput: OutputConfig{
-				LogplexMessageField,
-			},
-		},
-	}
-	return NewPipeline(logger, stages, nil, registerer)
 }

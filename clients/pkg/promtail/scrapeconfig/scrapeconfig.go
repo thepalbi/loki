@@ -359,7 +359,7 @@ type GcplogTargetConfig struct {
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
-// HerokuDrainTargetConfig describes a scrape config to listen and consume logs from heroku.
+// HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.
 type HerokuDrainTargetConfig struct {
 	// Server is the weaveworks server config for listening connections
 	Server server.Config `yaml:"server"`
@@ -378,9 +378,6 @@ type PushTargetConfig struct {
 
 	// If promtail should maintain the incoming log timestamp or replace it with the current time.
 	KeepTimestamp bool `yaml:"use_incoming_timestamp"`
-
-	// If the payload should not be splitted by the new line character into multiple entries.
-	OmitNewLineSplitting bool `yaml:"omit_new_line_splitting"`
 }
 
 // DefaultScrapeConfig is the default Config.

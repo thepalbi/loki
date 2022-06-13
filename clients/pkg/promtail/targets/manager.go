@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"

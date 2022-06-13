@@ -13,7 +13,7 @@ var (
 	// so this global is used for that purpose. This allows us to skip allocations of log messages at the
 	// debug level when debug level logging is not enabled. Log level allocations can become very expensive
 	// as we log numerous log entries per log line at debug level.
-	Debug = true
+	Debug = false
 
 	// Inspect is used to debug promtail pipelines by showing diffs between pipeline stages
 	Inspect = false
