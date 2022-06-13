@@ -22,6 +22,10 @@ const localhost = "127.0.0.1"
 
 const testPayload = `270 <158>1 2022-06-13T14:52:23.622778+00:00 host heroku router - at=info method=GET path="/" host=cryptic-cliffs-27764.herokuapp.com request_id=59da6323-2bc4-4143-8677-cc66ccfb115f fwd="181.167.87.140" dyno=web.1 connect=0ms service=3ms status=200 bytes=6979 protocol=https
 `
+const testLogLine1 = `140 <190>1 2022-06-13T14:52:23.621815+00:00 host app web.1 - [GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
+`
+const testLogLine2 = `156 <190>1 2022-06-13T14:52:23.827271+00:00 host app web.1 - [GIN] 2022/06/13 - 14:52:23 | 200 |      163.92µs |  181.167.87.140 | GET      "/static/main.css"
+`
 
 func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/heroku/api/v1/drain", host), strings.NewReader(strings.Join(bodies, "")))
@@ -47,11 +51,65 @@ func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
 	return req, nil
 }
 
-func TestPlaintextPushTarget(t *testing.T) {
+func TestHerokuDrainTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
-	//Create PushTarget
+	type expectedEntry struct {
+		labels model.LabelSet
+		line   string
+	}
+
+	cases := map[string]struct {
+		bodies          []string
+		expectedEntries []expectedEntry
+	}{
+		"logplex request with single log line": {
+			bodies: []string{testPayload},
+			expectedEntries: []expectedEntry{
+				{
+					labels: model.LabelSet{
+						"__logplex_host":   "host",
+						"__logplex_app":    "heroku",
+						"__logplex_proc":   "router",
+						"__logplex_log_id": "-",
+						"job":              "test_heroku",
+					},
+					line: `at=info method=GET path="/" host=cryptic-cliffs-27764.herokuapp.com request_id=59da6323-2bc4-4143-8677-cc66ccfb115f fwd="181.167.87.140" dyno=web.1 connect=0ms service=3ms status=200 bytes=6979 protocol=https
+`,
+				},
+			},
+		},
+		"logplex request with two log lines": {
+			bodies: []string{testLogLine1, testLogLine2},
+			expectedEntries: []expectedEntry{
+				{
+					labels: model.LabelSet{
+						"__logplex_host":   "host",
+						"__logplex_app":    "app",
+						"__logplex_proc":   "web.1",
+						"__logplex_log_id": "-",
+						"job":              "test_heroku",
+					},
+					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
+`,
+				},
+				{
+					labels: model.LabelSet{
+						"__logplex_host":   "host",
+						"__logplex_app":    "app",
+						"__logplex_proc":   "web.1",
+						"__logplex_log_id": "-",
+						"job":              "test_heroku",
+					},
+					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |      163.92µs |  181.167.87.140 | GET      "/static/main.css"
+`,
+				},
+			},
+		},
+	}
+
+	//Create fake promtail client
 	eh := fake.New(func() {})
 	defer eh.Stop()
 
@@ -82,39 +140,48 @@ func TestPlaintextPushTarget(t *testing.T) {
 	pt, err := NewHerokuDrainTarget(logger, eh, "job2", config)
 	require.NoError(t, err)
 
-	// Send some logs
-	ts := time.Now()
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Clear received lines after test case is ran
+			defer eh.Clear()
 
-	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), testPayload)
-	require.NoError(t, err, "expected test drain request to be successfully created")
-	res, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
+			// Send some logs
+			ts := time.Now()
 
-	// Wait for them to appear in the test handler
-	countdown := 1000
-	for len(eh.Received()) != 1 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
+			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.bodies...)
+			require.NoError(t, err, "expected test drain request to be successfully created")
+			res, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
+
+			// Wait for them to appear in the test handler
+			countdown := 1000
+			for len(eh.Received()) != 1 && countdown > 0 {
+				time.Sleep(1 * time.Millisecond)
+				countdown--
+			}
+
+			// Make sure we didn't timeout
+			require.Equal(t, len(tc.bodies), len(eh.Received()))
+
+			require.Equal(t, len(eh.Received()), len(tc.expectedEntries), "expected to receive equal amount of expected label sets")
+			for i, expectedEntry := range tc.expectedEntries {
+				// TODO: Add assertion over propagated timestamp
+				actualEntry := eh.Received()[i]
+
+				require.Equal(t, expectedEntry.line, actualEntry.Line, "expected line to be equal for %d-th entry", i)
+
+				expectedLS := expectedEntry.labels
+				actualLS := actualEntry.Labels
+				for label, value := range expectedLS {
+					require.Equal(t, expectedLS[label], actualLS[label], "expected label %s to be equal to %s in %d-th entry", label, value, i)
+				}
+
+				// Timestamp is always set in the handler, we expect received timestamps to be slightly higher than the timestamp when we started sending logs.
+				require.GreaterOrEqual(t, actualEntry.Timestamp.Unix(), ts.Unix(), "expected %d-th entry to have a received timestamp greater than publish time", i)
+			}
+		})
 	}
-
-	// Make sure we didn't timeout
-	require.Equal(t, 1, len(eh.Received()))
-
-	expectedParsedTime, _ := time.Parse(time.RFC3339, "2022-06-13T14:52:23.622778+00:00")
-
-	// Spot check the first value in the result to make sure relabel rules were applied properly
-	receivedLabels := eh.Received()[0].Labels
-	require.Equal(t, model.LabelValue("host"), receivedLabels["__logplex_host"])
-	require.Equal(t, model.LabelValue("heroku"), receivedLabels["__logplex_app"])
-	require.Equal(t, model.LabelValue("router"), receivedLabels["__logplex_proc"])
-	require.Equal(t, model.LabelValue("-"), receivedLabels["__logplex_log_id"])
-	require.Equal(t, model.LabelValue("test_heroku"), receivedLabels["job"])
-	gotTime, _ := time.Parse(time.RFC3339, string(receivedLabels["__logplex_ts"]))
-	require.GreaterOrEqual(t, gotTime, expectedParsedTime)
-
-	// Timestamp is always set in the handler, we expect received timestamps to be slightly higher than the timestamp when we started sending logs.
-	require.GreaterOrEqual(t, eh.Received()[0].Timestamp.Unix(), ts.Unix())
 
 	_ = pt.Stop()
 }

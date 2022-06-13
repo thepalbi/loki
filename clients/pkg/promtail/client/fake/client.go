@@ -40,6 +40,12 @@ func (c *Client) Stop() {
 	c.OnStop()
 }
 
+func (c *Client) Clear() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.received = []api.Entry{}
+}
+
 func (c *Client) Chan() chan<- api.Entry {
 	return c.entries
 }
