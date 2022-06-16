@@ -150,13 +150,12 @@ func TestHerokuDrainTarget(t *testing.T) {
 			},
 		},
 	}
-
-	//Create fake promtail client
-	eh := fake.New(func() {})
-	defer eh.Stop()
-
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			// Create fake promtail client
+			eh := fake.New(func() {})
+			defer eh.Stop()
+
 			serverConfig, port, err := getServerConfigWithAvailablePort()
 			require.NoError(t, err, "error generating server config or finding open port")
 			config := &scrapeconfig.HerokuTargetConfig{
