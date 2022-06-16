@@ -3,21 +3,23 @@ package heroku
 import (
 	"flag"
 	"fmt"
-	"github.com/go-kit/log"
-	"github.com/google/uuid"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/server"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
 const localhost = "127.0.0.1"
@@ -35,14 +37,6 @@ func makeDrainRequest(host string, bodies ...string) (*http.Request, error) {
 		return nil, err
 	}
 
-	/*
-		Headers received from drain messages
-
-			Content-Type: application/logplex-1
-			Logplex-Drain-Token: d.315c56cc-6553-4a07-ac60-af4fd23a9921
-			Logplex-Frame-Id: adc10463-d0e2-45d8-8a48-572c607b7a66
-			Logplex-Msg-Count: 2
-	*/
 	drainToken := uuid.New().String()
 	frameID := uuid.New().String()
 	req.Header.Set("Content-Type", "application/logplex-1")
@@ -63,7 +57,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 	}
 	type args struct {
 		bodies               []string
-		relabelConfigs       []*relabel.Config
+		RelabelConfigs       []*relabel.Config
 		UseIncomingTimestamp bool
 		Labels               model.LabelSet
 	}
@@ -78,7 +72,6 @@ func TestHerokuDrainTarget(t *testing.T) {
 				Labels: model.LabelSet{
 					"job": "some_job_name",
 				},
-				UseIncomingTimestamp: false,
 			},
 			expectedEntries: []expectedEntry{
 				{
@@ -96,7 +89,6 @@ func TestHerokuDrainTarget(t *testing.T) {
 				Labels: model.LabelSet{
 					"job": "multiple_line_job",
 				},
-				UseIncomingTimestamp: false,
 			},
 			expectedEntries: []expectedEntry{
 				{
@@ -115,45 +107,71 @@ func TestHerokuDrainTarget(t *testing.T) {
 				},
 			},
 		},
+		"heroku request with a single log line, with internal labels relabeled, and fixed labels": {
+			args: args{
+				bodies: []string{testLogLine1},
+				Labels: model.LabelSet{
+					"job": "relabeling_job",
+				},
+				RelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels: model.LabelNames{"__logplex_host"},
+						TargetLabel:  "host",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+					{
+						SourceLabels: model.LabelNames{"__logplex_app"},
+						TargetLabel:  "app",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+					{
+						SourceLabels: model.LabelNames{"__logplex_proc"},
+						TargetLabel:  "procID",
+						Replacement:  "$1",
+						Action:       relabel.Replace,
+						Regex:        relabel.MustNewRegexp("(.*)"),
+					},
+				},
+			},
+			expectedEntries: []expectedEntry{
+				{
+					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
+`,
+					labels: model.LabelSet{
+						"host":   "host",
+						"app":    "app",
+						"procID": "web.1",
+					},
+				},
+			},
+		},
 	}
 
 	//Create fake promtail client
 	eh := fake.New(func() {})
 	defer eh.Stop()
 
-	// Get a randomly available port by open and closing a TCP socket
-	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
-	require.NoError(t, err)
-	l, err := net.ListenTCP("tcp", addr)
-	require.NoError(t, err)
-	port := l.Addr().(*net.TCPAddr).Port
-	err = l.Close()
-	require.NoError(t, err)
-
-	// Adjust some of the defaults
-	defaults := server.Config{}
-	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	defaults.HTTPListenAddress = localhost
-	defaults.HTTPListenPort = port
-	defaults.GRPCListenAddress = localhost
-	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
-
-	config := &scrapeconfig.HerokuTargetConfig{
-		Server: defaults,
-		Labels: nil,
-	}
-	var relabelConfigs []*relabel.Config
-
-	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	pt, err := NewTarget(metrics, logger, eh, "test_job", config, relabelConfigs)
-	require.NoError(t, err)
-
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			// Override test-specific arguments
-			relabelConfigs = tc.args.relabelConfigs
-			config.UseIncomingTimestamp = tc.args.UseIncomingTimestamp
-			config.Labels = tc.args.Labels
+			serverConfig, port, err := getServerConfigWithAvailablePort()
+			require.NoError(t, err, "error generating server config or finding open port")
+			config := &scrapeconfig.HerokuTargetConfig{
+				Server:               serverConfig,
+				Labels:               tc.args.Labels,
+				UseIncomingTimestamp: tc.args.UseIncomingTimestamp,
+			}
+
+			prometheus.DefaultRegisterer = prometheus.NewRegistry()
+			metrics := NewMetrics(prometheus.DefaultRegisterer)
+			pt, err := NewTarget(metrics, logger, eh, "test_job", config, tc.args.RelabelConfigs)
+			require.NoError(t, err)
+			defer func() {
+				_ = pt.Stop()
+			}()
 
 			// Clear received lines after test case is ran
 			defer eh.Clear()
@@ -195,5 +213,30 @@ func TestHerokuDrainTarget(t *testing.T) {
 			}
 		})
 	}
-	_ = pt.Stop()
+}
+
+func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
+	// Get a randomly available port by open and closing a TCP socket
+	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
+	if err != nil {
+		return
+	}
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return
+	}
+	port = l.Addr().(*net.TCPAddr).Port
+	err = l.Close()
+	if err != nil {
+		return
+	}
+
+	// Adjust some of the defaults
+	cfg.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
+	cfg.HTTPListenAddress = localhost
+	cfg.HTTPListenPort = port
+	cfg.GRPCListenAddress = localhost
+	cfg.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+
+	return
 }
