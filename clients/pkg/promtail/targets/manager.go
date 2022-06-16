@@ -37,7 +37,7 @@ const (
 	CloudflareConfigs    = "cloudflareConfigs"
 	DockerConfigs        = "dockerConfigs"
 	DockerSDConfigs      = "dockerSDConfigs"
-	HerokuDrainConfigs   = "herokuDrainConfigs"
+	HerokuConfigs        = "herokuConfigs"
 )
 
 type targetManager interface {
@@ -97,8 +97,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
-		case cfg.HerokuDrainConfig != nil:
-			targetScrapeConfigs[HerokuDrainConfigs] = append(targetScrapeConfigs[HerokuDrainConfigs], cfg)
+		case cfg.HerokuConfig != nil:
+			targetScrapeConfigs[HerokuConfigs] = append(targetScrapeConfigs[HerokuConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -217,10 +217,10 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Loki Push API target manager")
 			}
 			targetManagers = append(targetManagers, pushTargetManager)
-		case HerokuDrainConfigs:
-			herokuDrainTargetManager, err := heroku.NewHerokuDrainTargetManager(reg, logger, client, scrapeConfigs)
+		case HerokuConfigs:
+			herokuDrainTargetManager, err := heroku.NewHerokuTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make Heroku Drain target manager")
+				return nil, errors.Wrap(err, "failed to make Heroku target manager")
 			}
 			targetManagers = append(targetManagers, herokuDrainTargetManager)
 		case WindowsEventsConfigs:

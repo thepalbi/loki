@@ -130,14 +130,14 @@ func TestHerokuDrainTarget(t *testing.T) {
 	defaults.GRPCListenAddress = localhost
 	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
 
-	config := &scrapeconfig.HerokuDrainTargetConfig{
+	config := &scrapeconfig.HerokuTargetConfig{
 		Server: defaults,
 		Labels: model.LabelSet{
 			"job": "test_heroku",
 		},
 	}
 
-	pt, err := NewHerokuDrainTarget(logger, eh, "job2", config)
+	pt, err := NewHerokuTarget(logger, eh, "job2", config)
 	require.NoError(t, err)
 
 	for name, tc := range cases {

@@ -27,21 +27,21 @@ var (
 	LogplexMessageField     = "__logplex_msg"
 )
 
-type HerokuDrainTarget struct {
+type HerokuTarget struct {
 	logger  log.Logger
 	handler api.EntryHandler
-	config  *scrapeconfig.HerokuDrainTargetConfig
+	config  *scrapeconfig.HerokuTargetConfig
 	jobName string
 	server  *server.Server
 }
 
-func NewHerokuDrainTarget(logger log.Logger,
+func NewHerokuTarget(logger log.Logger,
 	handler api.EntryHandler,
 	jobName string,
-	config *scrapeconfig.HerokuDrainTargetConfig,
-) (*HerokuDrainTarget, error) {
+	config *scrapeconfig.HerokuTargetConfig,
+) (*HerokuTarget, error) {
 
-	pt := &HerokuDrainTarget{
+	pt := &HerokuTarget{
 		logger:  logger,
 		handler: handler,
 		jobName: jobName,
@@ -75,7 +75,7 @@ func NewHerokuDrainTarget(logger log.Logger,
 	return pt, nil
 }
 
-func (h *HerokuDrainTarget) run() error {
+func (h *HerokuTarget) run() error {
 	level.Info(h.logger).Log("msg", "starting push server", "job", h.jobName)
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 	h.config.Server.MetricsNamespace = "promtail_" + h.jobName
@@ -105,7 +105,7 @@ func (h *HerokuDrainTarget) run() error {
 	return nil
 }
 
-func (h *HerokuDrainTarget) drain(w http.ResponseWriter, r *http.Request) {
+func (h *HerokuTarget) drain(w http.ResponseWriter, r *http.Request) {
 	entries := h.handler.Chan()
 	defer r.Body.Close()
 	herokuScanner := herokuEncoding.NewDrainScanner(r.Body)
@@ -134,27 +134,27 @@ func (h *HerokuDrainTarget) drain(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *HerokuDrainTarget) Type() target.TargetType {
+func (h *HerokuTarget) Type() target.TargetType {
 	return target.HerokuDrainTargetType
 }
 
-func (h *HerokuDrainTarget) DiscoveredLabels() model.LabelSet {
+func (h *HerokuTarget) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
-func (h *HerokuDrainTarget) Labels() model.LabelSet {
+func (h *HerokuTarget) Labels() model.LabelSet {
 	return h.config.Labels
 }
 
-func (h *HerokuDrainTarget) Ready() bool {
+func (h *HerokuTarget) Ready() bool {
 	return true
 }
 
-func (h *HerokuDrainTarget) Details() interface{} {
+func (h *HerokuTarget) Details() interface{} {
 	return map[string]string{}
 }
 
-func (h *HerokuDrainTarget) Stop() error {
+func (h *HerokuTarget) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping push server", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()

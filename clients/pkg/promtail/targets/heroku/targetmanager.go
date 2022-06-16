@@ -10,29 +10,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type HerokuDrainTargetManager struct {
+type HerokuTargetManager struct {
 	logger  log.Logger
-	targets map[string]*HerokuDrainTarget
+	targets map[string]*HerokuTarget
 }
 
-func NewHerokuDrainTargetManager(
+func NewHerokuTargetManager(
 	reg prometheus.Registerer,
 	logger log.Logger,
 	client api.EntryHandler,
-	scrapeConfigs []scrapeconfig.Config) (*HerokuDrainTargetManager, error) {
+	scrapeConfigs []scrapeconfig.Config) (*HerokuTargetManager, error) {
 
-	tm := &HerokuDrainTargetManager{
+	tm := &HerokuTargetManager{
 		logger:  logger,
-		targets: make(map[string]*HerokuDrainTarget),
+		targets: make(map[string]*HerokuTarget),
 	}
 
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "heroku_drain_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, reg)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "heroku_pipeline_"+cfg.JobName), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}
 
-		t, err := NewHerokuDrainTarget(logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuDrainConfig)
+		t, err := NewHerokuTarget(logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +43,7 @@ func NewHerokuDrainTargetManager(
 	return tm, nil
 }
 
-func (hm *HerokuDrainTargetManager) Ready() bool {
+func (hm *HerokuTargetManager) Ready() bool {
 	for _, t := range hm.targets {
 		if t.Ready() {
 			return true
@@ -52,19 +52,19 @@ func (hm *HerokuDrainTargetManager) Ready() bool {
 	return false
 }
 
-func (hm *HerokuDrainTargetManager) Stop() {
+func (hm *HerokuTargetManager) Stop() {
 	for name, t := range hm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("event", "failed to stop heroku drain target", "name", name, "cause", err)
+			level.Error(t.logger).Log("event", "failed to stop heroku target", "name", name, "cause", err)
 		}
 	}
 }
 
-func (hm *HerokuDrainTargetManager) ActiveTargets() map[string][]target.Target {
+func (hm *HerokuTargetManager) ActiveTargets() map[string][]target.Target {
 	return hm.AllTargets()
 }
 
-func (hm *HerokuDrainTargetManager) AllTargets() map[string][]target.Target {
+func (hm *HerokuTargetManager) AllTargets() map[string][]target.Target {
 	res := make(map[string][]target.Target, len(hm.targets))
 	for k, v := range hm.targets {
 		res[k] = []target.Target{v}
