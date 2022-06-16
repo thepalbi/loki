@@ -33,7 +33,7 @@ func NewHerokuTargetManager(
 			return nil, err
 		}
 
-		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuConfig)
+		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuConfig, cfg.RelabelConfigs)
 		if err != nil {
 			return nil, err
 		}

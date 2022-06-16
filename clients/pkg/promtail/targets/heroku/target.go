@@ -13,8 +13,11 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/server"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -28,22 +31,24 @@ var (
 )
 
 type Target struct {
-	logger  log.Logger
-	handler api.EntryHandler
-	config  *scrapeconfig.HerokuTargetConfig
-	jobName string
-	server  *server.Server
-	metrics *Metrics
+	logger         log.Logger
+	handler        api.EntryHandler
+	config         *scrapeconfig.HerokuTargetConfig
+	jobName        string
+	server         *server.Server
+	metrics        *Metrics
+	relabelConfigs []*relabel.Config
 }
 
-func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuTargetConfig) (*Target, error) {
+func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuTargetConfig, relabel []*relabel.Config) (*Target, error) {
 
-	pt := &Target{
-		metrics: metrics,
-		logger:  logger,
-		handler: handler,
-		jobName: jobName,
-		config:  config,
+	ht := &Target{
+		metrics:        metrics,
+		logger:         logger,
+		handler:        handler,
+		jobName:        jobName,
+		config:         config,
+		relabelConfigs: relabel,
 	}
 
 	// Bit of a chicken and egg problem trying to register the defaults and apply overrides from the loaded config.
@@ -65,18 +70,18 @@ func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jo
 	// Set the config to the new combined config.
 	config.Server = defaults
 
-	err := pt.run()
+	err := ht.run()
 	if err != nil {
 		return nil, err
 	}
 
-	return pt, nil
+	return ht, nil
 }
 
 func (h *Target) run() error {
-	level.Info(h.logger).Log("msg", "starting push server", "job", h.jobName)
+	level.Info(h.logger).Log("msg", "starting heroku target", "job", h.jobName)
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
-	h.config.Server.MetricsNamespace = "promtail_" + h.jobName
+	h.config.Server.MetricsNamespace = "promtail_heroku_target_" + h.jobName
 
 	// We don't want the /debug and /metrics endpoints running
 	h.config.Server.RegisterInstrumentation = false
@@ -108,17 +113,33 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	herokuScanner := herokuEncoding.NewDrainScanner(r.Body)
 	for herokuScanner.Scan() {
+		ts := time.Now()
 		message := herokuScanner.Message()
-		ls := model.LabelSet{}
-		ls[model.LabelName(LogplexTimestampField)] = model.LabelValue(message.Timestamp.Format(time.RFC3339Nano))
-		ls[model.LabelName(LogplexHostnameField)] = model.LabelValue(message.Hostname)
-		ls[model.LabelName(LogplexApplicationField)] = model.LabelValue(message.Application)
-		ls[model.LabelName(LogplexProcessIDField)] = model.LabelValue(message.Process)
-		ls[model.LabelName(LogplexLogIDField)] = model.LabelValue(message.ID)
+		lb := labels.NewBuilder(nil)
+		lb.Set(LogplexHostnameField, message.Hostname)
+		lb.Set(LogplexApplicationField, message.Application)
+		lb.Set(LogplexProcessIDField, message.Process)
+		lb.Set(LogplexLogIDField, message.ID)
+
+		if h.config.UseIncomingTimestamp {
+			ts = message.Timestamp
+		}
+
+		processed := relabel.Process(lb.Labels(), h.relabelConfigs...)
+
+		// Start with the set of labels fixed in the configuration
+		filtered := h.Labels().Clone()
+		for _, lbl := range processed {
+			if strings.HasPrefix(lbl.Name, "__") {
+				continue
+			}
+			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+		}
+
 		entries <- api.Entry{
-			Labels: h.Labels().Merge(ls),
+			Labels: filtered,
 			Entry: logproto.Entry{
-				Timestamp: time.Now(),
+				Timestamp: ts,
 				Line:      message.Message,
 			},
 		}
