@@ -7,7 +7,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 	"net"
@@ -59,48 +61,54 @@ func TestHerokuDrainTarget(t *testing.T) {
 		labels model.LabelSet
 		line   string
 	}
+	type args struct {
+		bodies               []string
+		relabelConfigs       []*relabel.Config
+		UseIncomingTimestamp bool
+		Labels               model.LabelSet
+	}
 
 	cases := map[string]struct {
-		bodies          []string
+		args            args
 		expectedEntries []expectedEntry
 	}{
-		"logplex request with single log line": {
-			bodies: []string{testPayload},
+		"heroku request with a single log line, internal labels dropped, and fixed are propagated": {
+			args: args{
+				bodies: []string{testPayload},
+				Labels: model.LabelSet{
+					"job": "some_job_name",
+				},
+				UseIncomingTimestamp: false,
+			},
 			expectedEntries: []expectedEntry{
 				{
 					labels: model.LabelSet{
-						"__logplex_host":   "host",
-						"__logplex_app":    "heroku",
-						"__logplex_proc":   "router",
-						"__logplex_log_id": "-",
-						"job":              "test_heroku",
+						"job": "some_job_name",
 					},
 					line: `at=info method=GET path="/" host=cryptic-cliffs-27764.herokuapp.com request_id=59da6323-2bc4-4143-8677-cc66ccfb115f fwd="181.167.87.140" dyno=web.1 connect=0ms service=3ms status=200 bytes=6979 protocol=https
 `,
 				},
 			},
 		},
-		"logplex request with two log lines": {
-			bodies: []string{testLogLine1, testLogLine2},
+		"heroku request with a two log lines, internal labels dropped, and fixed are propagated": {
+			args: args{
+				bodies: []string{testLogLine1, testLogLine2},
+				Labels: model.LabelSet{
+					"job": "multiple_line_job",
+				},
+				UseIncomingTimestamp: false,
+			},
 			expectedEntries: []expectedEntry{
 				{
 					labels: model.LabelSet{
-						"__logplex_host":   "host",
-						"__logplex_app":    "app",
-						"__logplex_proc":   "web.1",
-						"__logplex_log_id": "-",
-						"job":              "test_heroku",
+						"job": "multiple_line_job",
 					},
 					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
 `,
 				},
 				{
 					labels: model.LabelSet{
-						"__logplex_host":   "host",
-						"__logplex_app":    "app",
-						"__logplex_proc":   "web.1",
-						"__logplex_log_id": "-",
-						"job":              "test_heroku",
+						"job": "multiple_line_job",
 					},
 					line: `[GIN] 2022/06/13 - 14:52:23 | 200 |      163.92µs |  181.167.87.140 | GET      "/static/main.css"
 `,
@@ -132,23 +140,28 @@ func TestHerokuDrainTarget(t *testing.T) {
 
 	config := &scrapeconfig.HerokuTargetConfig{
 		Server: defaults,
-		Labels: model.LabelSet{
-			"job": "test_heroku",
-		},
+		Labels: nil,
 	}
+	var relabelConfigs []*relabel.Config
 
-	pt, err := NewTarget(nil, logger, eh, "job2", config)
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, relabelConfigs)
 	require.NoError(t, err)
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			// Override test-specific arguments
+			relabelConfigs = tc.args.relabelConfigs
+			config.UseIncomingTimestamp = tc.args.UseIncomingTimestamp
+			config.Labels = tc.args.Labels
+
 			// Clear received lines after test case is ran
 			defer eh.Clear()
 
 			// Send some logs
 			ts := time.Now()
 
-			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.bodies...)
+			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.bodies...)
 			require.NoError(t, err, "expected test drain request to be successfully created")
 			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -162,7 +175,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			}
 
 			// Make sure we didn't timeout
-			require.Equal(t, len(tc.bodies), len(eh.Received()))
+			require.Equal(t, len(tc.args.bodies), len(eh.Received()))
 
 			require.Equal(t, len(eh.Received()), len(tc.expectedEntries), "expected to receive equal amount of expected label sets")
 			for i, expectedEntry := range tc.expectedEntries {
@@ -182,6 +195,5 @@ func TestHerokuDrainTarget(t *testing.T) {
 			}
 		})
 	}
-
 	_ = pt.Stop()
 }

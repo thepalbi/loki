@@ -176,7 +176,7 @@ func (h *Target) Details() interface{} {
 }
 
 func (h *Target) Stop() error {
-	level.Info(h.logger).Log("msg", "stopping push server", "job", h.jobName)
+	level.Info(h.logger).Log("msg", "stopping heroku target", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()
 	return nil
