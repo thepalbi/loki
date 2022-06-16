@@ -137,7 +137,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		},
 	}
 
-	pt, err := NewHerokuTarget(logger, eh, "job2", config)
+	pt, err := NewTarget(nil, logger, eh, "job2", config)
 	require.NoError(t, err)
 
 	for name, tc := range cases {

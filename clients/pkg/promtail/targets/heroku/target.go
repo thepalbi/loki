@@ -27,21 +27,19 @@ var (
 	LogplexMessageField     = "__logplex_msg"
 )
 
-type HerokuTarget struct {
+type Target struct {
 	logger  log.Logger
 	handler api.EntryHandler
 	config  *scrapeconfig.HerokuTargetConfig
 	jobName string
 	server  *server.Server
+	metrics *Metrics
 }
 
-func NewHerokuTarget(logger log.Logger,
-	handler api.EntryHandler,
-	jobName string,
-	config *scrapeconfig.HerokuTargetConfig,
-) (*HerokuTarget, error) {
+func NewTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler, jobName string, config *scrapeconfig.HerokuTargetConfig) (*Target, error) {
 
-	pt := &HerokuTarget{
+	pt := &Target{
+		metrics: metrics,
 		logger:  logger,
 		handler: handler,
 		jobName: jobName,
@@ -75,7 +73,7 @@ func NewHerokuTarget(logger log.Logger,
 	return pt, nil
 }
 
-func (h *HerokuTarget) run() error {
+func (h *Target) run() error {
 	level.Info(h.logger).Log("msg", "starting push server", "job", h.jobName)
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 	h.config.Server.MetricsNamespace = "promtail_" + h.jobName
@@ -105,7 +103,7 @@ func (h *HerokuTarget) run() error {
 	return nil
 }
 
-func (h *HerokuTarget) drain(w http.ResponseWriter, r *http.Request) {
+func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 	entries := h.handler.Chan()
 	defer r.Body.Close()
 	herokuScanner := herokuEncoding.NewDrainScanner(r.Body)
@@ -124,9 +122,11 @@ func (h *HerokuTarget) drain(w http.ResponseWriter, r *http.Request) {
 				Line:      message.Message,
 			},
 		}
+		h.metrics.herokuEntries.WithLabelValues().Inc()
 	}
 	err := herokuScanner.Err()
 	if err != nil {
+		h.metrics.herokuErrors.WithLabelValues().Inc()
 		level.Warn(h.logger).Log("msg", "failed to read incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -134,27 +134,27 @@ func (h *HerokuTarget) drain(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *HerokuTarget) Type() target.TargetType {
+func (h *Target) Type() target.TargetType {
 	return target.HerokuDrainTargetType
 }
 
-func (h *HerokuTarget) DiscoveredLabels() model.LabelSet {
+func (h *Target) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
-func (h *HerokuTarget) Labels() model.LabelSet {
+func (h *Target) Labels() model.LabelSet {
 	return h.config.Labels
 }
 
-func (h *HerokuTarget) Ready() bool {
+func (h *Target) Ready() bool {
 	return true
 }
 
-func (h *HerokuTarget) Details() interface{} {
+func (h *Target) Details() interface{} {
 	return map[string]string{}
 }
 
-func (h *HerokuTarget) Stop() error {
+func (h *Target) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping push server", "job", h.jobName)
 	h.server.Shutdown()
 	h.handler.Stop()

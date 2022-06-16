@@ -10,20 +10,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type HerokuTargetManager struct {
+type TargetManager struct {
 	logger  log.Logger
-	targets map[string]*HerokuTarget
+	targets map[string]*Target
 }
 
 func NewHerokuTargetManager(
+	metrics *Metrics,
 	reg prometheus.Registerer,
 	logger log.Logger,
 	client api.EntryHandler,
-	scrapeConfigs []scrapeconfig.Config) (*HerokuTargetManager, error) {
+	scrapeConfigs []scrapeconfig.Config) (*TargetManager, error) {
 
-	tm := &HerokuTargetManager{
+	tm := &TargetManager{
 		logger:  logger,
-		targets: make(map[string]*HerokuTarget),
+		targets: make(map[string]*Target),
 	}
 
 	for _, cfg := range scrapeConfigs {
@@ -32,7 +33,7 @@ func NewHerokuTargetManager(
 			return nil, err
 		}
 
-		t, err := NewHerokuTarget(logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuConfig)
+		t, err := NewTarget(metrics, logger, pipeline.Wrap(client), cfg.JobName, cfg.HerokuConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +44,7 @@ func NewHerokuTargetManager(
 	return tm, nil
 }
 
-func (hm *HerokuTargetManager) Ready() bool {
+func (hm *TargetManager) Ready() bool {
 	for _, t := range hm.targets {
 		if t.Ready() {
 			return true
@@ -52,7 +53,7 @@ func (hm *HerokuTargetManager) Ready() bool {
 	return false
 }
 
-func (hm *HerokuTargetManager) Stop() {
+func (hm *TargetManager) Stop() {
 	for name, t := range hm.targets {
 		if err := t.Stop(); err != nil {
 			level.Error(t.logger).Log("event", "failed to stop heroku target", "name", name, "cause", err)
@@ -60,11 +61,11 @@ func (hm *HerokuTargetManager) Stop() {
 	}
 }
 
-func (hm *HerokuTargetManager) ActiveTargets() map[string][]target.Target {
+func (hm *TargetManager) ActiveTargets() map[string][]target.Target {
 	return hm.AllTargets()
 }
 
-func (hm *HerokuTargetManager) AllTargets() map[string][]target.Target {
+func (hm *TargetManager) AllTargets() map[string][]target.Target {
 	res := make(map[string][]target.Target, len(hm.targets))
 	for k, v := range hm.targets {
 		res[k] = []target.Target{v}
