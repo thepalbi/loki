@@ -28,6 +28,7 @@ const testPayload = `270 <158>1 2022-06-13T14:52:23.622778+00:00 host heroku rou
 `
 const testLogLine1 = `140 <190>1 2022-06-13T14:52:23.621815+00:00 host app web.1 - [GIN] 2022/06/13 - 14:52:23 | 200 |    1.428101ms |  181.167.87.140 | GET      "/"
 `
+const testLogLine1Timestamp = "2022-06-13T14:52:23.621815+00:00"
 const testLogLine2 = `156 <190>1 2022-06-13T14:52:23.827271+00:00 host app web.1 - [GIN] 2022/06/13 - 14:52:23 | 200 |      163.92µs |  181.167.87.140 | GET      "/static/main.css"
 `
 
@@ -56,10 +57,9 @@ func TestHerokuDrainTarget(t *testing.T) {
 		line   string
 	}
 	type args struct {
-		bodies               []string
-		RelabelConfigs       []*relabel.Config
-		UseIncomingTimestamp bool
-		Labels               model.LabelSet
+		RequestBodies  []string
+		RelabelConfigs []*relabel.Config
+		Labels         model.LabelSet
 	}
 
 	cases := map[string]struct {
@@ -68,7 +68,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 	}{
 		"heroku request with a single log line, internal labels dropped, and fixed are propagated": {
 			args: args{
-				bodies: []string{testPayload},
+				RequestBodies: []string{testPayload},
 				Labels: model.LabelSet{
 					"job": "some_job_name",
 				},
@@ -85,7 +85,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		},
 		"heroku request with a two log lines, internal labels dropped, and fixed are propagated": {
 			args: args{
-				bodies: []string{testLogLine1, testLogLine2},
+				RequestBodies: []string{testLogLine1, testLogLine2},
 				Labels: model.LabelSet{
 					"job": "multiple_line_job",
 				},
@@ -109,7 +109,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 		},
 		"heroku request with a single log line, with internal labels relabeled, and fixed labels": {
 			args: args{
-				bodies: []string{testLogLine1},
+				RequestBodies: []string{testLogLine1},
 				Labels: model.LabelSet{
 					"job": "relabeling_job",
 				},
@@ -161,7 +161,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			config := &scrapeconfig.HerokuTargetConfig{
 				Server:               serverConfig,
 				Labels:               tc.args.Labels,
-				UseIncomingTimestamp: tc.args.UseIncomingTimestamp,
+				UseIncomingTimestamp: false,
 			}
 
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
@@ -178,7 +178,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			// Send some logs
 			ts := time.Now()
 
-			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.bodies...)
+			req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), tc.args.RequestBodies...)
 			require.NoError(t, err, "expected test drain request to be successfully created")
 			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 			}
 
 			// Make sure we didn't timeout
-			require.Equal(t, len(tc.args.bodies), len(eh.Received()))
+			require.Equal(t, len(tc.args.RequestBodies), len(eh.Received()))
 
 			require.Equal(t, len(eh.Received()), len(tc.expectedEntries), "expected to receive equal amount of expected label sets")
 			for i, expectedEntry := range tc.expectedEntries {
@@ -212,6 +212,54 @@ func TestHerokuDrainTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHerokuDrainTarget_UseIncomingTimestamp(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	// Create fake promtail client
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	serverConfig, port, err := getServerConfigWithAvailablePort()
+	require.NoError(t, err, "error generating server config or finding open port")
+	config := &scrapeconfig.HerokuTargetConfig{
+		Server:               serverConfig,
+		Labels:               nil,
+		UseIncomingTimestamp: true,
+	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	pt, err := NewTarget(metrics, logger, eh, "test_job", config, nil)
+	require.NoError(t, err)
+	defer func() {
+		_ = pt.Stop()
+	}()
+
+	// Clear received lines after test case is ran
+	defer eh.Clear()
+
+	req, err := makeDrainRequest(fmt.Sprintf("http://%s:%d", localhost, port), testLogLine1)
+	require.NoError(t, err, "expected test drain request to be successfully created")
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, res.StatusCode, "expected no-content status code")
+
+	// Wait for them to appear in the test handler
+	countdown := 1000
+	for len(eh.Received()) != 1 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
+	// Make sure we didn't timeout
+	require.Equal(t, 1, len(eh.Received()))
+
+	expectedTs, err := time.Parse(time.RFC3339Nano, testLogLine1Timestamp)
+	require.NoError(t, err, "expected expected timestamp to be parse correctly")
+	require.Equal(t, expectedTs, eh.Received()[0].Timestamp, "expected entry timestamp to be overriden by received one")
 }
 
 func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {

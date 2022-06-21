@@ -21,15 +21,6 @@ import (
 	"time"
 )
 
-var (
-	LogplexTimestampField   = "__logplex_ts"
-	LogplexHostnameField    = "__logplex_host"
-	LogplexApplicationField = "__logplex_app"
-	LogplexProcessIDField   = "__logplex_proc"
-	LogplexLogIDField       = "__logplex_log_id"
-	LogplexMessageField     = "__logplex_msg"
-)
-
 type Target struct {
 	logger         log.Logger
 	handler        api.EntryHandler
@@ -116,10 +107,10 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 		ts := time.Now()
 		message := herokuScanner.Message()
 		lb := labels.NewBuilder(nil)
-		lb.Set(LogplexHostnameField, message.Hostname)
-		lb.Set(LogplexApplicationField, message.Application)
-		lb.Set(LogplexProcessIDField, message.Process)
-		lb.Set(LogplexLogIDField, message.ID)
+		lb.Set("__logplex_host", message.Hostname)
+		lb.Set("__logplex_app", message.Application)
+		lb.Set("__logplex_proc", message.Process)
+		lb.Set("__logplex_log_id", message.ID)
 
 		if h.config.UseIncomingTimestamp {
 			ts = message.Timestamp
